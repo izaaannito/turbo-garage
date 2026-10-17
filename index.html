@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Turbo Garage - Clicker de Coches</title>
+<style>
+  /* ============================================================
+     ESTILOS - Diseño "mobile-first" con estética arcade
+     ============================================================ */
+  :root {
+    --bg1: #1a0b3d;
+    --bg2: #3b0f6b;
+    --neon-pink: #ff2e93;
+    --neon-cyan: #19e3ff;
+    --neon-yellow: #ffe14d;
+    --neon-green: #3dff8a;
+    --panel: rgba(10, 6, 30, 0.72);
+    --text: #f4efff;
+    --muted: #9d8fc7;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    background: radial-gradient(circle at 50% 0%, var(--bg2), var(--bg1) 70%) fixed;
+    color: var(--text);
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow-x: hidden;
+  }
+
+  /* Contenedor principal centrado */
+  .game {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* ---------- Cabecera / marcadores ---------- */
+  .hud {
+    background: var(--panel);
+    border: 2px solid var(--neon-cyan);
+    border-radius: 16px;
+    padding: 12px 16px;
+    text-align: center;
+    box-shadow: 0 0 18px rgba(25, 227, 255, 0.35), inset 0 0 18px rgba(25, 227, 255, 0.08);
+  }
+  .title {
+    margin: 0 0 6px;
+    font-size: 1rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--neon-pink);
+    text-shadow: 0 0 10px var(--neon-pink);
+  }
+  .money {
+    font-size: clamp(2rem, 9vw, 3.2rem);
+    font-weight: 900;
+    color: var(--neon-yellow);
+    text-shadow: 0 0 14px rgba(255, 225, 77, 0.7);
+    line-height: 1.1;
+  }
+  .stats {
+    margin-top: 6px;
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+  .stats b { color: var(--neon-green); }
+
+  /* ---------- Zona del coche ---------- */
+  .main {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .car-zone {
+    position: relative;
+    background: var(--panel);
+    border: 2px solid var(--neon-pink);
+    border-radius: 16px;
+    padding: 18px 10px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    /* Sin overflow:hidden aquí para que los textos flotantes no se corten */
+    box-shadow: 0 0 18px rgba(255, 46, 147, 0.35);
+    min-height: 280px;
+  }
+  /* Carretera animada de fondo (contenida con su propio overflow) */
+  .road {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 38%;
+    overflow: hidden;
+    border-radius: 0 0 14px 14px;
+    background: #1b1233;
+    border-top: 3px solid var(--neon-cyan);
+  }
+  .road::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 50%;
+    height: 5px;
+    background: repeating-linear-gradient(90deg, var(--neon-yellow) 0 36px, transparent 36px 72px);
+    animation: roadMove 0.6s linear infinite;
+    opacity: 0.85;
+  }
+  @keyframes roadMove { to { background-position: -72px 0; } }
+
+  .car-btn {
+    position: relative;
+    z-index: 2;
+    width: min(62vw, 230px);
+    height: min(62vw, 230px);
+    border-radius: 50%;
+    border: 4px solid var(--neon-yellow);
+    background: radial-gradient(circle at 35% 30%, #ff6cb8, var(--neon-pink) 60%, #8a0f50);
+    box-shadow: 0 0 28px rgba(255, 46, 147, 0.7), 0 8px 0 #6b0a3c;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    touch-action: manipulation;
+    transition: box-shadow 0.08s;
+  }
+  .car-btn:active { box-shadow: 0 0 28px rgba(255, 46, 147, 0.7), 0 3px 0 #6b0a3c; }
+  .car-btn:focus-visible { outline: 3px solid var(--neon-cyan); outline-offset: 4px; }
+
+  .car-img {
+    width: 100%;
+    max-width: 250px;
+    height: auto;
+    image-rendering: crisp-edges;    /* respaldo para navegadores antiguos */
+    image-rendering: pixelated;      /* pixel art nítido al escalar (prevalece si se soporta) */
+    display: block;
+    transform-origin: 50% 80%;
+    filter: drop-shadow(0 6px 4px rgba(0,0,0,0.45));
+    pointer-events: none;            /* el clic lo recibe el botón */
+    -webkit-user-drag: none;
+  }
+  /* Animación de rebote al hacer clic (aplicada a la imagen) */
+  .car-img.bounce { animation: bounce 0.22s ease-out; }
+  @keyframes bounce {
+    0%   { transform: scale(1) translateY(0); }
+    40%  { transform: scale(0.86, 1.1) translateY(-10px); }
+    100% { transform: scale(1) translateY(0); }
+  }
+
+  .hint {
+    position: relative;
+    z-index: 2;
+    font-size: 0.85rem;
+    color: var(--text);
+    background: rgba(0,0,0,0.35);
+    padding: 4px 12px;
+    border-radius: 999px;
+  }
+
+  /* Texto flotante "+1" */
+  .float-text {
+    position: absolute;
+    z-index: 5;
+    pointer-events: none;
+    font-weight: 900;
+    font-size: 1.5rem;
+    color: var(--neon-yellow);
+    text-shadow: 0 2px 0 #000, 0 0 10px rgba(255, 225, 77, 0.9);
+    animation: floatUp 0.9s ease-out forwards;
+    white-space: nowrap;
+  }
+  @keyframes floatUp {
+    0%   { opacity: 1; transform: translate(-50%, 0) scale(0.8); }
+    20%  { transform: translate(-50%, -18px) scale(1.2); }
+    100% { opacity: 0; transform: translate(-50%, -90px) scale(1); }
+  }
+
+  /* ---------- Tienda ---------- */
+  .shop {
+    background: var(--panel);
+    border: 2px solid var(--neon-green);
+    border-radius: 16px;
+    padding: 12px;
+    box-shadow: 0 0 18px rgba(61, 255, 138, 0.25);
+  }
+  .shop h2 {
+    margin: 0 0 10px;
+    font-size: 1rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--neon-green);
+    text-shadow: 0 0 8px var(--neon-green);
+    text-align: center;
+  }
+  .items { display: flex; flex-direction: column; gap: 10px; }
+
+  .item {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+    color: var(--text);
+    font: inherit;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 2px solid #4a3d7a;
+    background: #231a45;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: transform 0.08s, border-color 0.15s, background 0.15s;
+  }
+  .item .ico-img {
+    width: 100%;
+    max-width: 44px;
+    height: auto;
+    image-rendering: crisp-edges;    /* respaldo para navegadores antiguos */
+    image-rendering: pixelated;      /* pixel art nítido (prevalece si se soporta) */
+    display: block;
+    margin: 0 auto;
+    pointer-events: none;
+    -webkit-user-drag: none;
+  }
+  .item .info-group { min-width: 0; }
+  .item .name,
+  .item .desc {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .item .name { font-weight: 800; font-size: 1rem; }
+  .item .desc { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+  .item .lvl  { font-size: 0.75rem; color: var(--neon-cyan); margin-top: 2px; }
+  .item .cost {
+    font-weight: 900;
+    font-size: 0.95rem;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.35);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* Estado: no se puede comprar (atenuado) */
+  .item:disabled { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.5); }
+
+  /* Estado: se puede comprar (brilla) */
+  .item.can-buy {
+    border-color: var(--neon-green);
+    background: linear-gradient(135deg, #1f3d3a, #2a2a5e);
+    box-shadow: 0 0 14px rgba(61, 255, 138, 0.55);
+    animation: glow 1.4s ease-in-out infinite;
+  }
+  .item.can-buy .cost { background: var(--neon-green); color: #062915; }
+  .item.can-buy:active { transform: scale(0.97); }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 8px rgba(61, 255, 138, 0.4); }
+    50%      { box-shadow: 0 0 20px rgba(61, 255, 138, 0.9); }
+  }
+
+  /* ---------- Indicador de Tuercas Doradas en el HUD ---------- */
+  .stats .gold { color: var(--neon-yellow); }
+
+  /* ---------- Botón de Prestigio "Vender Taller" ---------- */
+  .prestige-btn {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    font: inherit;
+    text-align: center;
+    color: var(--text);
+    background: #231a45;
+    border: 2px solid #4a3d7a;
+    border-radius: 12px;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: transform 0.08s, border-color 0.15s;
+  }
+  .prestige-btn .p-title {
+    display: block;
+    font-weight: 900;
+    font-size: 1rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .prestige-btn .p-sub {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .prestige-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.4); }
+
+  /* Listo para vender: dorado y brillante */
+  .prestige-btn.ready {
+    color: #2b1a00;
+    border-color: #fff2a8;
+    background: linear-gradient(135deg, #ffe14d, #ff9d1c);
+    box-shadow: 0 0 18px rgba(255, 200, 40, 0.8);
+    animation: goldGlow 1.2s ease-in-out infinite;
+  }
+  .prestige-btn.ready .p-sub { color: #4a2f00; }
+  .prestige-btn.ready:active { transform: scale(0.97); }
+  /* Esperando confirmación */
+  .prestige-btn.armed {
+    background: linear-gradient(135deg, #ff5c5c, #c4143c);
+    border-color: #ffd0d0;
+    color: #fff;
+    animation: none;
+  }
+  .prestige-btn.armed .p-sub { color: #ffe3e3; }
+  @keyframes goldGlow {
+    0%, 100% { box-shadow: 0 0 10px rgba(255, 200, 40, 0.5); }
+    50%      { box-shadow: 0 0 26px rgba(255, 200, 40, 1); }
+  }
+  @media (prefers-reduced-motion: reduce) { .prestige-btn.ready { animation: none; } }
+
+  /* ---------- Botón de anuncio recompensado ---------- */
+  .stats b.boosted { color: var(--neon-yellow); }
+
+  .ad-btn {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    font: inherit;
+    font-weight: 900;
+    font-size: 0.95rem;
+    text-align: center;
+    color: #031b22;
+    background: linear-gradient(135deg, #19e3ff, #8f7bff);
+    border: 2px solid #c9f7ff;
+    border-radius: 12px;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: transform 0.08s;
+  }
+  .ad-btn:active { transform: scale(0.97); }
+  .ad-btn:disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(0.3); }
+  /* Bono activo: dorado y con cuenta atrás */
+  .ad-btn.active,
+  .ad-btn.active:disabled {
+    opacity: 1;
+    filter: none;
+    color: #2b1a00;
+    background: linear-gradient(135deg, #ffe14d, #ff9d1c);
+    border-color: #fff2a8;
+    box-shadow: 0 0 16px rgba(255, 200, 40, 0.8);
+  }
+
+  /* Capa que bloquea todos los clics mientras dura el anuncio simulado */
+  .ad-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 40;                      /* por debajo del toast (50) */
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    text-align: center;
+    font-size: 1.3rem;
+    font-weight: 900;
+    color: #fff;
+    background: rgba(5, 2, 20, 0.7);
+  }
+  .ad-overlay.show { display: flex; }
+
+  /* ---------- Pie ---------- */
+  .footer {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+  }
+  .small-btn {
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid #4a3d7a;
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .small-btn.danger { color: #ff8a8a; border-color: #ff5c5c; }
+
+  /* Aviso (progreso offline, guardado, etc.) */
+  .toast {
+    position: fixed;
+    left: 50%;
+    top: 14px;
+    transform: translate(-50%, -120px);
+    background: var(--neon-cyan);
+    color: #031b22;
+    font-weight: 800;
+    padding: 10px 18px;
+    border-radius: 12px;
+    box-shadow: 0 0 20px rgba(25, 227, 255, 0.7);
+    transition: transform 0.35s ease;
+    z-index: 50;
+    max-width: 92vw;
+    text-align: center;
+  }
+  .toast.show { transform: translate(-50%, 0); }
+
+  /* ---------- Escritorio: coche a la izquierda, tienda a la derecha ---------- */
+  @media (min-width: 800px) {
+    .game { padding: 24px; }
+    .main { flex-direction: row; align-items: stretch; }
+    .car-zone { flex: 1.1; min-height: 480px; }
+    .shop { flex: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .road::after, .item.can-buy { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="game">
+
+  <!-- Marcadores -->
+  <header class="hud">
+    <h1 class="title">🏁 Turbo Garage 🏁</h1>
+    <div class="money" id="money">💰 0</div>
+    <div class="stats">
+      <span>Por clic: <b id="perClick">1</b></span>
+      <span>Por segundo: <b id="perSec">0</b></span>
+      <span>Total ganado: <b id="total">0</b></span>
+      <span class="gold">⚙️ Tuercas Doradas: <b id="nuts">0</b> (<b id="nutBonus">+0%</b>)</span>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- Zona principal: el coche -->
+    <section class="car-zone" id="carZone">
+      <div class="road"></div>
+      <button class="car-btn" id="carBtn" aria-label="Tocar el coche para ganar dinero">
+        <img class="car-img" id="carImg" alt="Coche" draggable="false">
+      </button>
+      <div class="hint">¡Toca el coche para ganar dinero!</div>
+    </section>
+
+    <!-- Tienda de mejoras -->
+    <section class="shop">
+      <h2>🔧 Taller de mejoras</h2>
+      <button class="ad-btn" id="adBtn">📺 x2 Ingresos (Ver Anuncio)</button>
+      <button class="prestige-btn" id="prestigeBtn" disabled>
+        <span class="p-title" id="pTitle">🏭 Vender Taller</span>
+        <span class="p-sub" id="pSub"></span>
+      </button>
+      <div class="items" id="items"></div>
+    </section>
+  </div>
+
+  <div class="footer">
+    <button class="small-btn" id="muteBtn" aria-label="Activar o silenciar el sonido">🔊 Sonido</button>
+    <button class="small-btn" id="saveBtn">💾 Guardar</button>
+    <button class="small-btn danger" id="resetBtn">🗑️ Reiniciar</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="ad-overlay" id="adOverlay" aria-live="polite">📺 Reproduciendo anuncio...</div>
+
+<script>
+/* ============================================================
+   GESTOR DE AUDIO SINTETIZADO (Web Audio API)
+   Sin archivos externos: todos los sonidos se generan con osciladores.
+   ============================================================ */
+const GameAudio = {
+  ctx: null,
+  muted: false,
+  MUTE_KEY: 'turboGarage_muted_v1',
+
+  // Lee la preferencia de silencio guardada
+  loadPref() {
+    try { this.muted = localStorage.getItem(this.MUTE_KEY) === '1'; } catch (e) {}
+  },
+  savePref() {
+    try { localStorage.setItem(this.MUTE_KEY, this.muted ? '1' : '0'); } catch (e) {}
+  },
+
+  // Los navegadores bloquean el audio hasta la primera interacción:
+  // se crea (o reanuda) el AudioContext en el primer clic del usuario.
+  init() {
+    try {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        this.ctx = new AC();
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+    } catch (e) { /* audio no disponible: el juego sigue funcionando */ }
+  },
+
+  // Emite una nota corta con envolvente de volumen (evita "clics" al cortar)
+  tone(freq, startOffset, duration, volume, type) {
+    if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+    const t0 = this.ctx.currentTime + startOffset;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.02);
+  },
+
+  // SFX Clic: pitido muy corto, agudo y suave (0.05 s)
+  click() {
+    this.tone(1000 + Math.random() * 200, 0, 0.05, 0.08, 'sine');
+  },
+
+  // SFX Compra: sonido doble rápido, tipo campanita/moneda
+  buy() {
+    this.tone(1175, 0, 0.09, 0.12, 'sine');
+    this.tone(1760, 0.08, 0.16, 0.12, 'sine');
+  },
+
+  toggle() {
+    this.muted = !this.muted;
+    this.savePref();
+    return this.muted;
+  }
+};
+GameAudio.loadPref();
+window.GameAudio = GameAudio;
+
+(() => {
+  'use strict';
+
+  /* ============================================================
+     CONFIGURACIÓN
+     ============================================================ */
+  const SAVE_KEY = 'turboGarage_save_v1';
+  const COST_GROWTH = 1.15;        // Multiplicador exponencial del coste
+  const AUTOSAVE_MS = 5000;        // Guardado automático cada 5 s
+  const RENDER_MS = 100;           // El HUD se refresca 10 veces/s (sin lag)
+  const OFFLINE_RATE = 0.5;        // Se gana el 50% del ingreso pasivo estando offline
+  const OFFLINE_MAX_S = 7200;      // Máximo 2 horas de progreso offline (evita abusos cambiando la hora)
+
+  /* ============================================================
+     ASSETS GRÁFICOS
+     - Coches: imágenes PNG pixel art incrustadas en Base64 (Data URI), sin carpeta externa.
+     - Iconos de la tienda: imágenes PNG pixel art incrustadas en Base64 (Data URI).
+     ============================================================ */
+  // Definición de las mejoras. "type" indica qué efecto tiene.
+  const UPGRADES = [
+    { id: 'motor',   icon: 'assets/motor.png', name: 'Mejorar Motor',      desc: '+1 por clic y +2% de tus ingresos/s', baseCost: 15, value: 1, synergy: 0.02, type: 'click' },
+    { id: 'mecanico',icon: 'assets/engranaje.png', name: 'Contratar Mecánico', desc: '+1 dinero por segundo',     baseCost: 100,    value: 1,   type: 'passive' },
+    { id: 'taller',  icon: 'assets/taller.png', name: 'Comprar Taller',     desc: '+25 dinero por segundo',    baseCost: 2500,  value: 25,  type: 'passive' },
+    { id: 'fabrica', icon: 'assets/turbo.png', name: 'Fábrica de Turbos',  desc: '+200 dinero por segundo',   baseCost: 50000, value: 200, type: 'passive' }
+  ];
+
+  // El coche evoluciona según el nivel del motor
+  const CAR_STAGES = [
+    { minLevel: 0,  src: 'assets/coche1.png' },
+    { minLevel: 25, src: 'assets/coche2.png' },
+    { minLevel: 50, src: 'assets/coche3.png' },
+    { minLevel: 80, src: 'assets/coche4.png' }
+  ];
+
+  /* ============================================================
+     ESTADO DEL JUEGO (lógica pura, sin tocar el DOM)
+     ============================================================ */
+  const PRESTIGE_MIN = 1000000;    // Total ganado mínimo (1M) para poder vender el taller
+  const PRESTIGE_BONUS = 0.10;     // Cada Tuerca Dorada = +10% a todos los ingresos
+
+  // Anuncio recompensado (simulado)
+  const AD_SIM_MS = 3000;          // Duración del anuncio simulado
+  const AD_BOOST_MS = 60000;       // Duración del bono tras ver el anuncio
+  const AD_BOOST_MULT = 2;         // Multiplicador de ingresos pasivos
+  let adBoostEnd = 0;              // Instante (performance.now) en que termina el bono (no se guarda)
+  let adPlaying = false;           // true mientras se "reproduce" el anuncio (bloquea el juego)
+
+  const state = {
+    money: 0,
+    total: 0,             // Total ganado en la partida actual (se reinicia al prestigiar)
+    prestige: 0,          // Tuercas Doradas ⚙️ (permanentes)
+    levels: {}            // { motor: 0, mecanico: 0, ... }
+  };
+  UPGRADES.forEach(u => state.levels[u.id] = 0);
+
+  // Coste actual de una mejora: costoBase * 1.15^nivel
+  function costOf(u) {
+    return Math.ceil(u.baseCost * Math.pow(COST_GROWTH, state.levels[u.id]));
+  }
+  // Multiplicador permanente de las Tuercas Doradas (1 + 10% por tuerca)
+  function prestigeMult() {
+    return 1 + PRESTIGE_BONUS * state.prestige;
+  }
+  // Ingreso pasivo base por segundo (sin multiplicador de prestigio)
+  function basePerSecond() {
+    let v = 0;
+    UPGRADES.forEach(u => { if (u.type === 'passive') v += u.value * state.levels[u.id]; });
+    return v;
+  }
+  // ¿Está activo el bono x2 del anuncio?
+  function adActive() {
+    return performance.now() < adBoostEnd;
+  }
+  function adSecondsLeft() {
+    return Math.max(0, Math.ceil((adBoostEnd - performance.now()) / 1000));
+  }
+  // Ingreso pasivo final por segundo (con prestigio y bono temporal del anuncio)
+  function perSecond() {
+    return basePerSecond() * prestigeMult() * (adActive() ? AD_BOOST_MULT : 1);
+  }
+  // Dinero por clic = 1 base + por cada nivel de motor: (valor base + 2% del ingreso pasivo base),
+  // y al final se aplica el multiplicador de prestigio una sola vez.
+  function perClick() {
+    let v = 1;
+    const ps = basePerSecond();
+    UPGRADES.forEach(u => {
+      if (u.type === 'click') v += (u.value + (u.synergy || 0) * ps) * state.levels[u.id];
+    });
+    return v * prestigeMult();
+  }
+  // Tuercas Doradas que se ganarían al vender el taller ahora mismo
+  function prestigeGain() {
+    return Math.floor(Math.cbrt(state.total / PRESTIGE_MIN));
+  }
+  function earn(amount) {
+    state.money += amount;
+    state.total += amount;
+  }
+  function buy(id) {
+    const u = UPGRADES.find(x => x.id === id);
+    const cost = costOf(u);
+    if (state.money < cost) return false;
+    state.money -= cost;
+    state.levels[id]++;
+    return true;
+  }
+
+  /* ============================================================
+     GUARDADO / CARGA (localStorage)
+     ============================================================ */
+  function save() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        money: state.money,
+        total: state.total,
+        prestige: state.prestige,
+        levels: state.levels,
+        perSecond: perSecond(),
+        savedAt: Date.now()
+      }));
+      return true;
+    } catch (e) { return false; }   // Modo privado o almacenamiento bloqueado
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (typeof d.money === 'number' && isFinite(d.money)) state.money = d.money;
+      if (typeof d.total === 'number' && isFinite(d.total)) state.total = d.total;
+      if (typeof d.prestige === 'number' && isFinite(d.prestige) && d.prestige > 0) state.prestige = Math.floor(d.prestige);
+      if (d.levels) {
+        UPGRADES.forEach(u => {
+          const lv = Number(d.levels[u.id]);
+          state.levels[u.id] = Number.isFinite(lv) && lv > 0 ? Math.floor(lv) : 0;
+        });
+      }
+      return d;
+    } catch (e) { return null; }    // Guardado corrupto: se empieza de cero
+  }
+
+  /* ============================================================
+     FORMATO DE NÚMEROS (1.2K, 3.4M, ...)
+     ============================================================ */
+  const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];
+  function fmt(n) {
+    if (n < 1000) return Math.floor(n).toString();
+    let i = 0;
+    while (n >= 1000 && i < SUFFIXES.length - 1) { n /= 1000; i++; }
+    return (n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2)) + SUFFIXES[i];
+  }
+
+  /* ============================================================
+     RENDERIZADO (solo toca el DOM)
+     ============================================================ */
+  // Números pequeños con un decimal (para que el bono de prestigio se note en cifras bajas)
+  function fmtDec(n) {
+    return (n < 100 && n % 1 !== 0) ? (Math.round(n * 10) / 10).toString() : fmt(n);
+  }
+
+  const $ = id => document.getElementById(id);
+  const el = {
+    adBtn: $('adBtn'), adOverlay: $('adOverlay'),
+    nuts: $('nuts'), nutBonus: $('nutBonus'),
+    prestigeBtn: $('prestigeBtn'), pTitle: $('pTitle'), pSub: $('pSub'), muteBtn: $('muteBtn'),
+    money: $('money'), perClick: $('perClick'), perSec: $('perSec'), total: $('total'),
+    carBtn: $('carBtn'), carImg: $('carImg'), carZone: $('carZone'),
+    items: $('items'), toast: $('toast'), saveBtn: $('saveBtn'), resetBtn: $('resetBtn')
+  };
+
+  // Se construye la tienda UNA sola vez; después solo se actualizan textos
+  const itemRefs = {};
+  function buildShop() {
+    UPGRADES.forEach(u => {
+      const b = document.createElement('button');
+      b.className = 'item';
+      b.innerHTML =
+        '<img class="ico-img" src="' + u.icon + '" alt="" draggable="false">' +
+        '<div class="info-group"><div class="name">' + u.name + '</div>' +
+        '<div class="desc">' + u.desc + '</div>' +
+        '<div class="lvl"></div></div>' +
+        '<span class="cost"></span>';
+      b.addEventListener('click', () => {
+        if (adPlaying) return;           // juego bloqueado durante el anuncio
+        if (buy(u.id)) { GameAudio.buy(); renderAll(); save(); }
+      });
+      el.items.appendChild(b);
+      itemRefs[u.id] = { btn: b, lvl: b.querySelector('.lvl'), cost: b.querySelector('.cost') };
+    });
+  }
+
+  // Estado del botón de prestigio (pide confirmación con un segundo clic)
+  let prestigeArmed = false, prestigeTimer = null;
+
+  function renderPrestige() {
+    const gain = prestigeGain();
+    const canSell = state.total >= PRESTIGE_MIN && gain >= 1;
+    const btn = el.prestigeBtn;
+    btn.disabled = !canSell;
+    btn.classList.toggle('ready', canSell && !prestigeArmed);
+    btn.classList.toggle('armed', canSell && prestigeArmed);
+
+    if (canSell && prestigeArmed) {
+      el.pTitle.textContent = '⚠️ ¿Seguro? Pulsa otra vez';
+      el.pSub.textContent = 'Se reinicia la partida y ganas ⚙️ +' + fmt(gain);
+    } else if (canSell) {
+      el.pTitle.textContent = '🏭 Vender Taller';
+      el.pSub.textContent = 'Ganarás ⚙️ +' + fmt(gain) + (gain === 1 ? ' Tuerca Dorada' : ' Tuercas Doradas');
+    } else {
+      const pct = Math.min(99, Math.floor(state.total / PRESTIGE_MIN * 100));
+      el.pTitle.textContent = '🏭 Vender Taller';
+      el.pSub.textContent = 'Necesitas 💰 ' + fmt(PRESTIGE_MIN) + ' ganados en total (' + pct + '%)';
+    }
+  }
+
+  // Botón de anuncio: normal / reproduciendo / bono activo con cuenta atrás
+  let adWasActive = false, lastAdText = '';
+  function renderAd() {
+    const active = adActive();
+    let text;
+    if (adPlaying)   text = '📺 Anuncio en curso...';
+    else if (active) text = '⏳ x2 Activo (' + adSecondsLeft() + 's)';
+    else             text = '📺 x2 Ingresos (Ver Anuncio)';
+
+    el.adBtn.disabled = adPlaying || active;
+    el.adBtn.classList.toggle('active', active);
+    if (text !== lastAdText) { el.adBtn.textContent = text; lastAdText = text; }
+
+    if (adWasActive && !active) showToast('⏳ El bono x2 ha terminado');
+    adWasActive = active;
+  }
+
+  let lastCarSrc = '';
+  function renderAll() {
+    el.money.textContent = '💰 ' + fmt(state.money);
+    el.perClick.textContent = fmtDec(perClick());
+    el.perSec.textContent = fmtDec(perSecond()) + (adActive() ? ' (x2)' : '');
+    el.perSec.classList.toggle('boosted', adActive());
+    el.total.textContent = fmt(state.total);
+    el.nuts.textContent = fmt(state.prestige);
+    el.nutBonus.textContent = '+' + Math.round(state.prestige * PRESTIGE_BONUS * 100) + '%';
+    renderPrestige();
+    renderAd();
+
+    UPGRADES.forEach(u => {
+      const r = itemRefs[u.id];
+      const cost = costOf(u);
+      const afford = state.money >= cost;
+      r.lvl.textContent = 'Nivel ' + state.levels[u.id];
+      r.cost.textContent = '💰 ' + fmt(cost);
+      r.btn.disabled = !afford;                       // Atenuado si no alcanza
+      r.btn.classList.toggle('can-buy', afford);      // Brilla si alcanza
+    });
+
+    // Evolución visual del coche
+    const lvl = state.levels.motor;
+    let stage = CAR_STAGES[0];
+    CAR_STAGES.forEach(s => { if (lvl >= s.minLevel) stage = s; });
+    if (stage.src !== lastCarSrc) { el.carImg.src = stage.src; lastCarSrc = stage.src; }
+  }
+
+  /* ---------- Efectos: texto flotante y rebote ---------- */
+  function spawnFloat(x, y, text) {
+    // Límite de elementos para evitar lag con clics muy rápidos
+    if (el.carZone.querySelectorAll('.float-text').length > 25) return;
+    const f = document.createElement('div');
+    f.className = 'float-text';
+    f.textContent = '+' + fmtDec(text);
+    f.style.left = x + 'px';
+    f.style.top = y + 'px';
+    f.addEventListener('animationend', () => f.remove());
+    el.carZone.appendChild(f);
+  }
+
+  function bounceCar() {
+    el.carImg.classList.remove('bounce');
+    void el.carImg.offsetWidth;            // Reinicia la animación
+    el.carImg.classList.add('bounce');
+  }
+
+  let toastTimer = null;
+  function showToast(msg) {
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toast.classList.remove('show'), 3200);
+  }
+
+  /* ============================================================
+     EVENTOS
+     ============================================================ */
+  el.carBtn.addEventListener('click', (e) => {
+    if (adPlaying) return;                     // juego bloqueado durante el anuncio
+    const gain = perClick();
+    earn(gain);
+    GameAudio.click();
+    bounceCar();
+
+    // Posición del texto flotante relativa a la zona del coche
+    const zone = el.carZone.getBoundingClientRect();
+    let x = e.clientX - zone.left, y = e.clientY - zone.top;
+    if (!e.clientX && !e.clientY) {            // Clic con teclado: centro del coche
+      const c = el.carBtn.getBoundingClientRect();
+      x = c.left - zone.left + c.width / 2;
+      y = c.top - zone.top + c.height / 2;
+    }
+    x += (Math.random() - 0.5) * 30;           // Pequeña variación aleatoria
+    spawnFloat(x, y - 10, gain);
+  });
+
+  el.saveBtn.addEventListener('click', () => {
+    showToast(save() ? '💾 ¡Progreso guardado!' : '⚠️ No se pudo guardar');
+  });
+
+  // Audio: se inicializa en el primer clic/toque sobre cualquier botón de la página
+  function unlockAudio() { GameAudio.init(); }
+  document.addEventListener('pointerdown', unlockAudio, true);
+  document.addEventListener('click', unlockAudio, true);
+  document.addEventListener('keydown', unlockAudio, true);
+
+  // Botón de silencio 🔊/🔇
+  function renderMute() {
+    el.muteBtn.textContent = GameAudio.muted ? '🔇 Silenciado' : '🔊 Sonido';
+  }
+  el.muteBtn.addEventListener('click', () => {
+    GameAudio.toggle();
+    renderMute();
+  });
+
+  // Prestigio "Vender Taller": primer clic pide confirmación, segundo clic ejecuta
+  function disarmPrestige() {
+    prestigeArmed = false;
+    clearTimeout(prestigeTimer);
+  }
+  el.prestigeBtn.addEventListener('click', () => {
+    if (adPlaying) return;
+    const gain = prestigeGain();
+    if (state.total < PRESTIGE_MIN || gain < 1) return;
+
+    if (!prestigeArmed) {
+      prestigeArmed = true;
+      renderPrestige();
+      prestigeTimer = setTimeout(() => { prestigeArmed = false; renderPrestige(); }, 3000);
+      return;
+    }
+
+    // Reinicio duro: las Tuercas se suman y se conservan; lo demás vuelve a 0
+    disarmPrestige();
+    state.prestige += gain;
+    state.money = 0;
+    state.total = 0;
+    UPGRADES.forEach(u => state.levels[u.id] = 0);
+    save();
+    renderAll();
+    showToast('⚙️ ¡Taller vendido! +' + fmt(gain) + (gain === 1 ? ' Tuerca Dorada' : ' Tuercas Doradas') +
+              ' (bono total +' + Math.round(state.prestige * PRESTIGE_BONUS * 100) + '%)');
+  });
+
+  /* ============================================================
+     ANUNCIO RECOMPENSADO (simulador)
+     Para integrar un SDK real (Poki, 1001juegos...), sustituye el cuerpo de
+     requestRewardedAd() por la llamada del SDK, por ejemplo:
+       PokiSDK.rewardedBreak().then(ok => ok ? onReward() : onFail());
+     El resto del flujo (bloqueo, bono x2, temporizador) no cambia.
+     ============================================================ */
+  function requestRewardedAd(onReward, onFail) {
+    // SIMULACIÓN: tras 3 segundos se concede siempre la recompensa
+    setTimeout(onReward, AD_SIM_MS);
+  }
+
+  function startAd() {
+    if (adPlaying || adActive()) return;
+    adPlaying = true;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    el.adOverlay.classList.add('show');         // bloquea cualquier clic
+    showToast('📺 Simulando anuncio de 3 segundos...');
+    renderAd();
+
+    requestRewardedAd(
+      () => {                                   // Anuncio visto: recompensa
+        adPlaying = false;
+        el.adOverlay.classList.remove('show');
+        adBoostEnd = performance.now() + AD_BOOST_MS;
+        GameAudio.buy();
+        showToast('🎉 ¡x2 Ingresos durante 60 segundos!');
+        renderAll();
+      },
+      () => {                                   // Anuncio no disponible / cancelado
+        adPlaying = false;
+        el.adOverlay.classList.remove('show');
+        showToast('No hay anuncio disponible ahora mismo');
+        renderAll();
+      }
+    );
+  }
+  el.adBtn.addEventListener('click', startAd);
+
+  // Reinicio con doble confirmación propia (confirm() suele estar bloqueado en iframes de portales)
+  let resetArmed = false, resetTimer = null;
+  el.resetBtn.addEventListener('click', () => {
+    if (!resetArmed) {
+      resetArmed = true;
+      el.resetBtn.textContent = '⚠️ ¿Borrar TODO? Pulsa otra vez';
+      resetTimer = setTimeout(() => {
+        resetArmed = false;
+        el.resetBtn.textContent = '🗑️ Reiniciar';
+      }, 3000);
+      return;
+    }
+    clearTimeout(resetTimer);
+    resetArmed = false;
+    el.resetBtn.textContent = '🗑️ Reiniciar';
+    // El reinicio manual borra TODO, incluidas las Tuercas Doradas
+    disarmPrestige();
+    adBoostEnd = 0;
+    state.money = 0; state.total = 0; state.prestige = 0;
+    UPGRADES.forEach(u => state.levels[u.id] = 0);
+    save();
+    renderAll();
+    showToast('Partida reiniciada');
+  });
+
+  // Guardar al salir o al ocultar la pestaña (móviles)
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+  window.addEventListener('pagehide', save);
+  window.addEventListener('beforeunload', save);
+
+  /* ============================================================
+     BUCLE PRINCIPAL
+     - La lógica (ingreso pasivo) usa delta time real: es exacta
+       aunque la pestaña vaya lenta.
+     - El renderizado se limita a 10 veces por segundo.
+     ============================================================ */
+  let lastTime = performance.now();
+  let renderAcc = 0;
+  let saveAcc = 0;
+
+  function loop(now) {
+    const dt = Math.min((now - lastTime) / 1000, 1);   // Segundos (máx. 1 por frame)
+    lastTime = now;
+
+    // --- Lógica ---
+    const ps = perSecond();
+    if (ps > 0) earn(ps * dt);
+
+    // --- Renderizado limitado ---
+    renderAcc += dt * 1000;
+    if (renderAcc >= RENDER_MS) { renderAcc = 0; renderAll(); }
+
+    // --- Autoguardado ---
+    saveAcc += dt * 1000;
+    if (saveAcc >= AUTOSAVE_MS) { saveAcc = 0; save(); }
+
+    requestAnimationFrame(loop);
+  }
+
+  /* ============================================================
+     INICIO
+     ============================================================ */
+  buildShop();
+  renderMute();
+  const saved = load();
+
+  // Progreso offline: dinero ganado mientras el jugador estaba fuera
+  if (saved && typeof saved.savedAt === 'number') {
+    const secs = Math.min((Date.now() - saved.savedAt) / 1000, OFFLINE_MAX_S);
+    const ps = perSecond();
+    if (secs > 30 && ps > 0) {
+      const away = ps * secs * OFFLINE_RATE;
+      earn(away);
+      setTimeout(() => showToast('¡Bienvenido! Tus mecánicos ganaron 💰 ' + fmt(away) + ' mientras no estabas'), 400);
+    }
+  }
+
+  renderAll();
+  requestAnimationFrame(t => { lastTime = t; loop(t); });
+})();
+</script>
+</body>
+</html>
